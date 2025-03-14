@@ -1,0 +1,69 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+    send_batch_max_size: 1024
+    metadata_keys: []
+    metadata_cardinality_limit: 1000
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1024
+    spike_limit_mib: 128
+
+  resource:
+    attributes:
+      - action: insert
+        key: service.name
+        value: "bvx-rest-api"
+      - action: insert
+        key: environment
+        value: "development"
+      - action: insert
+        key: host.name
+        value: "local-dev"
+      - action: insert
+        key: loki.resource.labels
+        value: "service.name,environment,host.name"
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889  # Exposes metrics for Prometheus to scrape
+    send_timestamps: true
+    enable_open_metrics: true  # Better metric format handling
+
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    tls:
+      insecure: true
+
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, memory_limiter, resource]
+      exporters: [otlp/tempo, debug]
+    
+    metrics:
+      receivers: [otlp]
+      processors: [batch, memory_limiter, resource]
+      exporters: [prometheus, debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch, memory_limiter, resource]
+      exporters: [loki, debug]

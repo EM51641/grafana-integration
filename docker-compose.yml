@@ -1,0 +1,93 @@
+services:
+  otel-collector:
+    image:  otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - otlp-logs:/var/log  # Add this to access system logs if needed
+    ports:
+      - "4317:4317"   # gRPC
+      - "8889:8889"   # metrics
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana-enterprise:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+      - GF_OTLP_ENABLED=true
+      - GF_OTLP_GRPC_ENABLED=true
+      - GF_OTLP_ADDRESS=0.0.0.0:4317
+      - GF_OTLP_TLS_ENABLED=false
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+      - loki
+      - otel-collector
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - monitoring
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+
+  tempo:
+    image: grafana/tempo:latest
+    ports:
+      - "9095:9095"
+      - "3200:3200"
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo/config.yaml
+      - tempo-data:/var/tempo
+    command: -config.file=/etc/tempo/config.yaml
+    networks:
+      - monitoring
+
+  postgres:
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=testdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - monitoring
+
+volumes:
+  otlp-logs:
+  grafana-storage:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  postgres-data:
+networks:
+  monitoring:
+    driver: bridge
